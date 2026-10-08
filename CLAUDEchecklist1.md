@@ -8,6 +8,22 @@ along the way. Not fixed as they're found — tracked here and cleaned up in
 one pass once the build is further along, so we don't thrash on process docs
 mid-build.
 
+## Reference sources (playbook) — verified 2026-10-08
+
+Every item below cites these by name/path only; the actual clickable URLs
+were never saved anywhere in this project until now. Verified live via
+`gh api` (not guessed) on 2026-10-08:
+
+- **Course repo:** https://github.com/initmahesh/MLAI-community-labs
+- **The exact lesson this project follows:**
+  https://github.com/initmahesh/MLAI-community-labs/tree/main/Cohort-Labs/cohort-10/week-5/5.1-ai-app-development-with-claude-and-azure
+  - `01-Planning-and-Architecture-Lab` — Stage 1/2 source (engineering plan, skills/design system)
+  - `02-Building-the-Application-Lab` — Stage 3/4 source (frontend scaffold → specs → implement → DB schema, in that order — see item 3)
+  - `03-Security-and-Deployment-Lab` — Stage 6/7 source ("Lab 3" elsewhere in this checklist — Netlify deploy + security controls)
+  - `04-integration-of-your-app-with-azureagent` — not used in this build
+- **Starter repo this project (and its `CLAUDE.md`/`skills/*`) was templated from:**
+  https://github.com/sachin0034-tech/dev-os
+
 Each item has two independent checkboxes:
 - **Worked around this session** — did we get unblocked and keep moving?
 - **Fixed at the source** — has the underlying file (`CLAUDE.md`, a
