@@ -12,3 +12,4 @@ out/
 build/
 *.pem
 npm-debug.log*
+.Rhistory
