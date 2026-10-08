@@ -1,1 +1,14 @@
 .DS_Store
+
+# Environment variables (never commit secrets)
+.env
+.env.local
+.env*.local
+
+# Next.js (contractiq/ and any future app folders)
+node_modules/
+.next/
+out/
+build/
+*.pem
+npm-debug.log*

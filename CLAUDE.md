@@ -21,6 +21,12 @@ Transform the user's requirements into two documents:
 - `engineering-doc.md` — high-level architecture (stack, flows, DB design, API spec, folder structure)
 - `implementation-specs.md` — one detailed spec block per feature (user flow, DB schema, DB tasks, API routes, state management, component spec, design, edge cases)
 
+> **Note:** `skills/engineering-planner/SKILL.md` does not actually define
+> `implementation-specs.md`'s output structure (it only defines
+> `engineering-doc.md`). Before generating `implementation-specs.md`, read and
+> review `checklist1.md` (item 1) for the exact methodology/prompt to use to
+> work around this gap.
+
 Before generating, use `AskUserQuestion` to resolve any missing architectural decisions (auth strategy, database, LLM provider, user roles, etc.).
 
 When done, show the user what was created and ask:

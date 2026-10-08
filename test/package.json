@@ -1,0 +1,23 @@
+{
+  "name": "contractiq-e2e-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:auth": "vitest run auth/",
+    "test:upload": "vitest run upload/",
+    "test:extraction": "vitest run extraction/",
+    "test:viewer": "vitest run viewer/",
+    "test:chat": "vitest run chat/",
+    "test:dashboard": "vitest run dashboard/",
+    "test:feedback": "vitest run feedback/",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.0",
+    "@supabase/supabase-js": "^2.45.0",
+    "dotenv": "^16.4.5",
+    "vitest": "^5.0.3"
+  }
+}

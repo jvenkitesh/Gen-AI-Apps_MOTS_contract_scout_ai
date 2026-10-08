@@ -1,0 +1,40 @@
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { createConfirmedTestUser, deleteTestUser, loginAndGetCookieHeader, type TestUser } from "../helpers/testUser";
+import { deleteStorageObject } from "../helpers/supabaseAdmin";
+import { loadPdfAsFile, SAMPLE_NDA_PATH } from "../helpers/fixtures";
+import { uploadContract } from "../helpers/uploadHelpers";
+import { processContract } from "../helpers/contractApi";
+
+// Priority: P0 -- security-critical. Deliberately uses an UPLOADED (not yet
+// processed) contract -- ownership is checked before status, so this needs
+// no real OpenAI call to verify isolation.
+describe("extraction-cross-user-rejected", () => {
+  let userA: TestUser;
+  let userB: TestUser;
+  let cookieB: string;
+  let contractId: string;
+  const filename = "Aurelios System NDA 1.pdf";
+
+  beforeAll(async () => {
+    userA = await createConfirmedTestUser("extract-cross-a");
+    userB = await createConfirmedTestUser("extract-cross-b");
+    const cookieA = await loginAndGetCookieHeader(userA.email, userA.password);
+    cookieB = await loginAndGetCookieHeader(userB.email, userB.password);
+
+    const file = await loadPdfAsFile(SAMPLE_NDA_PATH, filename);
+    const { body } = await uploadContract(cookieA, file, "NDA");
+    contractId = body.contract_id!;
+  });
+
+  afterAll(async () => {
+    await deleteStorageObject(`${userA.id}/${contractId}/${filename}`);
+    await deleteTestUser(userA.id);
+    await deleteTestUser(userB.id);
+  });
+
+  it("blocks userB from processing userA's contract with 404", async () => {
+    const { status, body } = await processContract(cookieB, contractId);
+    expect(status).toBe(404);
+    expect(body.error).toBe("NOT_FOUND");
+  });
+});
