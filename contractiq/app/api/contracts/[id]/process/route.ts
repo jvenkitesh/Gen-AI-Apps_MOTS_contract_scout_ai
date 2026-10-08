@@ -3,6 +3,8 @@ import { getOpenAIClient } from "@/lib/ai/openaiClient";
 import { buildExtractionSystemPrompt, JSON_RETRY_PROMPT } from "@/lib/ai/prompts/extraction";
 import { extractionResponseSchema, type ExtractedTermFromAI } from "@/lib/ai/extractionSchema";
 import { STANDARD_TERMS } from "@/lib/ai/termLibrary";
+import { requireAuth } from "@/lib/security/authGuard";
+import { checkRateLimit, rateLimitResponse } from "@/lib/security/rateLimiter";
 import { NextResponse } from "next/server";
 import type OpenAI from "openai";
 
@@ -15,12 +17,13 @@ const CHARS_PER_TOKEN_ESTIMATE = 4;
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const authResult = await requireAuth(supabase);
+  if ("error" in authResult) return authResult.error;
+  const { user } = authResult;
 
-  if (!user) {
-    return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+  const rateLimit = await checkRateLimit(`user:${user.id}`, "process");
+  if (!rateLimit.allowed) {
+    return rateLimitResponse(rateLimit.retryAfterSeconds);
   }
 
   const { data: contract } = await supabase

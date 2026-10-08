@@ -2,23 +2,22 @@ import { createClient } from "@/lib/supabase/server";
 import { getOpenAIClient } from "@/lib/ai/openaiClient";
 import { classifyQuery } from "@/lib/ai/queryClassifier";
 import { buildChatSystemPrompt } from "@/lib/ai/prompts/chat";
+import { requireAuth } from "@/lib/security/authGuard";
+import { chatMessageSchema } from "@/lib/security/inputValidator";
+import { checkRateLimit, rateLimitResponse } from "@/lib/security/rateLimiter";
+import { sanitizeForLLM } from "@/lib/security/promptInjectionGuard";
+import { verifyContractOwnership } from "@/lib/security/chatSecurity";
+import { MAX_CHAT_HISTORY } from "@/lib/security/tokenLimiter";
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import type OpenAI from "openai";
 
 export const runtime = "nodejs";
 
-const sendSchema = z.object({ message: z.string().min(1).max(5000) });
-
 export async function GET(request: Request, { params }: { params: { id: string } }) {
   const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-  }
+  const authResult = await requireAuth(supabase);
+  if ("error" in authResult) return authResult.error;
+  const { user } = authResult;
 
   const { data: contract } = await supabase
     .from("contracts")
@@ -46,37 +45,37 @@ export async function GET(request: Request, { params }: { params: { id: string }
     .select("id, role, content, page_citation, created_at")
     .eq("session_id", session.id)
     .order("created_at", { ascending: true })
-    .limit(200);
+    .limit(MAX_CHAT_HISTORY);
 
   return NextResponse.json({ session_id: session.id, messages: messages ?? [] });
 }
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const authResult = await requireAuth(supabase);
+  if ("error" in authResult) return authResult.error;
+  const { user } = authResult;
 
-  if (!user) {
-    return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+  const rateLimit = await checkRateLimit(`user:${user.id}`, "chat");
+  if (!rateLimit.allowed) {
+    return rateLimitResponse(rateLimit.retryAfterSeconds);
   }
 
   const json = await request.json().catch(() => null);
-  const parsed = sendSchema.safeParse(json);
+  const parsed = chatMessageSchema.safeParse(json);
   if (!parsed.success) {
     return NextResponse.json({ error: "VALIDATION_ERROR" }, { status: 422 });
   }
 
-  const { data: contract } = await supabase
-    .from("contracts")
-    .select("id, status, contract_text")
-    .eq("id", params.id)
-    .eq("user_id", user.id)
-    .single();
+  const sanitizeResult = sanitizeForLLM(parsed.data.message);
+  if (sanitizeResult.blocked) {
+    return NextResponse.json({ error: sanitizeResult.reason }, { status: 400 });
+  }
 
   // Chat is only meaningful once extraction has completed; also doubles as
   // the ownership check (404, not 403, per the no-existence-leak rule).
-  if (!contract || contract.status !== "completed") {
+  const contract = await verifyContractOwnership(supabase, user.id, params.id);
+  if (!contract) {
     return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
   }
 
@@ -85,6 +84,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
     .from("chat_sessions")
     .select("id")
     .eq("contract_id", contract.id)
+    .eq("user_id", user.id)
     .maybeSingle();
 
   if (existingSession) {
@@ -114,7 +114,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
     .select("role, content")
     .eq("session_id", sessionId)
     .order("created_at", { ascending: true })
-    .limit(200);
+    .limit(MAX_CHAT_HISTORY);
 
   const classification = classifyQuery(parsed.data.message);
   const systemPrompt = buildChatSystemPrompt({

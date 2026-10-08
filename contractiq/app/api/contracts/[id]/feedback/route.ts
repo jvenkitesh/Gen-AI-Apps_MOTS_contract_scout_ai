@@ -1,21 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/security/authGuard";
+import { feedbackSchema } from "@/lib/security/inputValidator";
 import { NextResponse } from "next/server";
-import { z } from "zod";
-
-const feedbackSchema = z.object({
-  rating: z.enum(["up", "down"]),
-  comment: z.string().max(2000).optional(),
-});
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-  }
+  const authResult = await requireAuth(supabase);
+  if ("error" in authResult) return authResult.error;
+  const { user } = authResult;
 
   const json = await request.json().catch(() => null);
   const parsed = feedbackSchema.safeParse(json);

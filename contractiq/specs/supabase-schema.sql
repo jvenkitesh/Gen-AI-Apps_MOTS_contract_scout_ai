@@ -18,6 +18,7 @@ drop policy if exists "contracts_storage_select_own_folder" on storage.objects;
 drop policy if exists "contracts_storage_delete_own_folder" on storage.objects;
 
 drop table if exists public.feedback cascade;
+drop table if exists rate_limit_events cascade;
 drop table if exists chat_messages cascade;
 drop table if exists chat_sessions cascade;
 drop view if exists term_corrections cascade;
@@ -58,7 +59,7 @@ begin
   new.updated_at = now();
   return new;
 end;
-$$ language plpgsql;
+$$ language plpgsql set search_path = public, pg_temp;
 
 -- ============================================================
 -- profiles
@@ -88,7 +89,14 @@ begin
   insert into public.profiles (id) values (new.id);
   return new;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer set search_path = public, pg_temp;
+
+-- SECURITY DEFINER functions are otherwise callable directly via
+-- /rest/v1/rpc/handle_new_user by any anon/authenticated caller. The
+-- on_auth_user_created trigger below invokes it regardless of these grants
+-- (trigger execution isn't gated by EXECUTE privileges), so revoking public
+-- access only closes the direct-RPC path, not the intended usage.
+revoke execute on function handle_new_user() from public, anon, authenticated;
 
 create trigger on_auth_user_created
   after insert on auth.users
@@ -156,7 +164,7 @@ begin
   end if;
   return new;
 end;
-$$ language plpgsql;
+$$ language plpgsql set search_path = public, pg_temp;
 
 create trigger custom_key_terms_enforce_max
   before insert on custom_key_terms
@@ -294,6 +302,22 @@ create policy "contracts_storage_delete_own_folder" on storage.objects
   using (bucket_id = 'contracts' and auth.uid()::text = (storage.foldername(name))[1]);
 
 -- ============================================================
--- Not created here, reserved for Stage 7 (security-foundation):
---   rate_limit_events
+-- rate_limit_events (Stage 7 -- security-foundation)
+-- Sliding-window rate limiting. Service-role access only: no RLS policies
+-- are defined, so only createAdminClient() (bypasses RLS) can read/write it,
+-- preventing users from manipulating their own counts.
+--
+-- `identifier` is a generic string ("user:<uuid>" or "ip:<address>"), not a
+-- strict FK to auth.users -- the Authentication limit must rate-limit
+-- PRE-auth requests (failed logins, signups), where there is often no valid
+-- user_id yet. A user_id-only design cannot represent that case at all.
 -- ============================================================
+create table if not exists rate_limit_events (
+  id         uuid        primary key default gen_random_uuid(),
+  identifier text        not null,
+  action     text        not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_rate_limit_events_lookup
+  on rate_limit_events (identifier, action, created_at desc);
+alter table rate_limit_events enable row level security;
