@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/security/authGuard";
 import { NextResponse } from "next/server";
 
 export async function DELETE(
@@ -6,13 +7,9 @@ export async function DELETE(
   { params }: { params: { id: string; termId: string } }
 ) {
   const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-  }
+  const authResult = await requireAuth(supabase);
+  if ("error" in authResult) return authResult.error;
+  const { user } = authResult;
 
   const { error, count } = await supabase
     .from("custom_key_terms")

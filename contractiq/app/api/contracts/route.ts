@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/security/authGuard";
 import { NextResponse } from "next/server";
 
 const SORT_COLUMNS: Record<string, string> = {
@@ -9,13 +10,9 @@ const SORT_COLUMNS: Record<string, string> = {
 
 export async function GET(request: Request) {
   const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-  }
+  const authResult = await requireAuth(supabase);
+  if ("error" in authResult) return authResult.error;
+  const { user } = authResult;
 
   const url = new URL(request.url);
   const sortParam = url.searchParams.get("sort") ?? "date";

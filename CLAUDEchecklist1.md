@@ -152,7 +152,7 @@ the engineering-planner skill (`docs/engineering-plan.md`)..."* — but
 
 ## 5. Security output path disagreement
 
-- Worked around this session: **n/a** (Stage 7 not reached yet)
+- Worked around this session: **yes — used `contractiq/lib/security/`**
 - Fixed at the source: **no**
 
 `CLAUDE.md`'s Stage 7 section says output includes `src/lib/security/`, but
@@ -164,6 +164,10 @@ this project's `skills/frontend-setup/SKILL.md` scaffolds a root-level
 flagged inside `docs/engineering/engineering-doc.md`'s Open Items — checked
 directly, it is **not** (that section only has 7 items, none about this).
 Tracked here only.
+
+**Resolved at Stage 7 (2026-10-08):** confirmed no `src/` directory exists
+anywhere in the app; all security files were written to
+`contractiq/lib/security/`, matching every other `lib/*` module.
 
 **Fix later:** drop the `src/` prefix in `CLAUDE.md`'s Stage 7 description.
 
@@ -309,6 +313,91 @@ originally chosen because the PRD's Technical Requirements table names
 "pdf-parse (Node.js)" explicitly — any replacement should preserve the same
 `[PAGE N]`-marker extraction contract (`lib/pdf/extractText.ts`'s current
 interface) so nothing downstream needs to change.
+
+---
+
+## 11. `skills/security-foundation/SKILL.md` has no invocable `/security-foundation` slash command
+
+- Worked around this session: **yes — read the skill file directly and followed it manually**
+- Fixed at the source: **no**
+
+Same gap pattern as item 1: `CLAUDE.md`'s Stage 7 names `/security-foundation`
+as the skill to run, and the file exists at
+`skills/security-foundation/SKILL.md` with a full, well-specified methodology
+— but it isn't registered as an invocable skill in this session (`Skill` tool
+returned "Unknown skill: security-foundation"). Read the file directly and
+followed its Steps/Requirements/Deliverables manually instead.
+
+**Fix later:** investigate why repo-local `skills/*/SKILL.md` files aren't
+being picked up as invocable slash commands at all in this environment (true
+for every skill in this project, not just this one) — may be an environment/
+plugin-registration issue rather than anything wrong with the skill files
+themselves.
+
+---
+
+## 12. `supabase/rls-policies.sql` path disagreement
+
+- Worked around this session: **yes — used `contractiq/supabase/rls-policies.sql`**
+- Fixed at the source: **no**
+
+`CLAUDE.md`'s Stage 7 output and Docs Reference table both list
+`supabase/rls-policies.sql` unprefixed, implying repo root — but every other
+SQL/spec artifact in this project lives under `contractiq/` (`database.sql`,
+`specs/supabase-schema.sql`). Placed it at `contractiq/supabase/rls-policies.sql`
+for consistency with that established convention.
+
+**Fix later:** prefix this path with `contractiq/` in `CLAUDE.md`'s Stage 7
+section and Docs Reference table.
+
+---
+
+## 13. `security-foundation` skill's `inputValidator.ts` deliverable assumes a `lib/utils/validation.ts` that was never created
+
+- Worked around this session: **yes**
+- Fixed at the source: **no**
+
+The skill's own Deliverables table describes `inputValidator.ts` as
+`validateFileUpload() + re-exports all Zod schemas from lib/utils/validation.ts`
+— implying per-route Zod schemas already live in a separate
+`lib/utils/validation.ts` file from an earlier stage. No such file was ever
+created (Stage 2/4 left each route's Zod schema defined inline, per-file).
+Centralized the existing inline schemas directly into
+`lib/security/inputValidator.ts` instead of adding an extra, currently-pointless
+re-export indirection layer.
+
+**Fix later:** either have an earlier stage's skill (`implementation-specs` or
+`frontend-setup`) actually produce `lib/utils/validation.ts`, or drop the
+re-export-indirection wording from `security-foundation`'s deliverable table.
+
+---
+
+## 14. `security-foundation` skill's generic templates don't match this app's actual scope
+
+- Worked around this session: **yes — followed actual app capability, not the skill's generic examples**
+- Fixed at the source: **no**
+
+Three places where the skill's template is a generic example, not something to
+apply literally:
+- **Allowed file types:** skill says `.pdf, .docx`; this app's extraction
+  pipeline (`lib/pdf/extractText.ts`) is PDF-only via `pdf-parse` — allowing
+  `.docx` uploads would accept files the app cannot process. Scoped
+  `validateFileUpload()` to `.pdf` only.
+- **Protected route list:** skill lists `/chat` and `/profile`; neither exists
+  as a standalone route in this app (chat is nested under `/contracts/[id]`,
+  already covered; there is no `/profile`, only `/settings`). Left
+  `middleware.ts`'s matcher as `/dashboard`, `/contracts`, `/settings` (already
+  correct) plus the new `/login`/`/signup` redirect-when-authenticated logic.
+- **Token/usage limit defaults:** skill's example table suggests 200 max pages
+  and a `MAX_CHAT_HISTORY` default of 100; this app's real, already-approved
+  limits are 20 pages (PRD FR-02) and a long-standing hardcoded `.limit(200)`
+  chat history fetch. Centralized the app's actual values in
+  `lib/security/tokenLimiter.ts` rather than silently changing established
+  behavior to match the skill's generic placeholder numbers.
+
+**Fix later:** none needed — these are expected, template-vs-actual-app
+divergences, not bugs. Noting here only so a future session doesn't assume the
+skill's literal example values/lists are this app's real requirements.
 
 ---
 

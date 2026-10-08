@@ -1,43 +1,45 @@
 import { createClient } from "@/lib/supabase/server";
 import { extractContractText } from "@/lib/pdf/extractText";
 import { STANDARD_TERMS } from "@/lib/ai/termLibrary";
+import { requireAuth } from "@/lib/security/authGuard";
+import { validateFileUpload } from "@/lib/security/inputValidator";
+import { checkRateLimit, rateLimitResponse } from "@/lib/security/rateLimiter";
+import { MAX_PAGE_COUNT, MIN_WORD_COUNT } from "@/lib/security/tokenLimiter";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB, per PRD FR-02
-const MAX_PAGES = 20;
-const MIN_WORDS = 100;
-
 export async function POST(request: Request) {
   const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const authResult = await requireAuth(supabase);
+  if ("error" in authResult) return authResult.error;
+  const { user } = authResult;
 
-  if (!user) {
-    return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+  const rateLimit = await checkRateLimit(`user:${user.id}`, "upload");
+  if (!rateLimit.allowed) {
+    return rateLimitResponse(rateLimit.retryAfterSeconds);
   }
 
   const formData = await request.formData().catch(() => null);
   const file = formData?.get("file");
   const contractType = formData?.get("contract_type");
 
-  if (!(file instanceof File) || file.type !== "application/pdf") {
+  if (!(file instanceof File)) {
     return NextResponse.json(
       { error: "VALIDATION_ERROR", message: "Only PDF files are supported." },
+      { status: 422 }
+    );
+  }
+  const fileValidation = validateFileUpload(file);
+  if (!fileValidation.valid) {
+    return NextResponse.json(
+      { error: fileValidation.error, message: fileValidation.message },
       { status: 422 }
     );
   }
   if (contractType !== "NDA" && contractType !== "MSA") {
     return NextResponse.json(
       { error: "VALIDATION_ERROR", message: "contract_type must be NDA or MSA." },
-      { status: 422 }
-    );
-  }
-  if (file.size > MAX_FILE_SIZE) {
-    return NextResponse.json(
-      { error: "VALIDATION_ERROR", message: "File must be 10MB or smaller." },
       { status: 422 }
     );
   }
@@ -57,14 +59,14 @@ export async function POST(request: Request) {
     );
   }
 
-  if (extracted.pageCount > MAX_PAGES) {
+  if (extracted.pageCount > MAX_PAGE_COUNT) {
     return NextResponse.json(
-      { error: "VALIDATION_ERROR", message: `Contracts must be ${MAX_PAGES} pages or fewer.` },
+      { error: "VALIDATION_ERROR", message: `Contracts must be ${MAX_PAGE_COUNT} pages or fewer.` },
       { status: 422 }
     );
   }
 
-  if (extracted.wordCount < MIN_WORDS) {
+  if (extracted.wordCount < MIN_WORD_COUNT) {
     await supabase.from("contracts").insert({
       user_id: user.id,
       original_filename: file.name,
